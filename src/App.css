@@ -140,12 +140,14 @@
 
 .hud-selector {
   left: 1rem;
-  right: 23.7rem;
+  right: auto;
   bottom: 1rem;
   display: flex;
   flex-wrap: wrap;
   gap: 0.55rem;
   padding: 0.8rem;
+  width: fit-content;
+  max-width: calc(100% - 24.7rem);
   animation-delay: 130ms;
 }
 
