@@ -1,73 +1,79 @@
-# React + TypeScript + Vite
+# Solar 3D Web App
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Solar 3D is a stylized interactive observatory built with React, TypeScript, and Three.js.
+It lets you explore a cinematic, real-time model of the Sun, planets, and Earth's Moon
+through a control panel layered on top of a 3D scene.
 
-Currently, two official plugins are available:
+## Highlights
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- Real-time orbital animation for major solar system bodies
+- Click any world in the scene to focus it
+- HUD controls for playback, camera behavior, labels, and orbit paths
+- Time-warp slider to speed up or slow down the simulation
+- Cinematic camera mode with smooth easing transitions
+- Stylized visuals with bloom, chromatic aberration, vignette, and noise
+- Procedural asteroid belt, star layers, and sparkles
+- Responsive interface that adapts to desktop and mobile layouts
 
-## React Compiler
+## Tech Stack
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- React 19 + TypeScript
+- Vite 7
+- three.js
+- @react-three/fiber
+- @react-three/drei
+- @react-three/postprocessing + postprocessing
+- maath (easing utilities)
 
-## Expanding the ESLint configuration
+## Getting Started
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+### Prerequisites
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+- Node.js
+- npm
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+### Install and run
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Open `http://localhost:5173` in your browser.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## Available Scripts
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+- `npm run dev` - Starts the local dev server
+- `npm run build` - Runs TypeScript checks and creates a production build
+- `npm run preview` - Serves the production build locally
+- `npm run lint` - Runs ESLint
+
+## Controls
+
+- Drag to orbit the camera
+- Scroll to zoom in and out
+- Click a body in the scene to select it
+- Use the body pills to jump focus quickly
+- Toggle Play/Pause, Follow, Cinematic, Orbits, and Labels
+- Adjust simulation speed with the Time Warp slider
+
+## Project Structure
+
+```text
+src/
+  App.tsx                    # HUD layout, body selector, control panel
+  components/SolarScene.tsx  # 3D scene, camera rig, effects, body rendering
+  data/solarBodies.ts        # body definitions and orbital position math
 ```
+
+## Customization
+
+- Add or tune planets/moons in `src/data/solarBodies.ts`
+- Change initial simulation settings in `src/App.tsx`
+- Tweak rendering, camera, and effects in `src/components/SolarScene.tsx`
+- Adjust UI styling in `src/App.css` and `src/index.css`
+
+## Notes
+
+- Planet textures are loaded from the official three.js example texture set.
+- If a texture cannot be loaded, the app still renders bodies using fallback colors.
