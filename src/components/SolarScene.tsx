@@ -412,10 +412,15 @@ function CameraRig({
 }: CameraRigProps) {
   const { camera } = useThree()
   const desiredPosition = useRef(new Vector3())
+  const focusPosition = useRef(new Vector3())
   const orbitOffset = useRef(new Vector3())
   const origin = useRef(new Vector3(0, 0, 0))
   const spin = useRef(0)
   const sway = useRef(0)
+  const transitionEndTime = useRef(0)
+  const isFocusInitialized = useRef(false)
+  const lastSelectedBodyRef = useRef<BodyId>(selectedBodyId)
+  const wasFollowingSelectionRef = useRef(followSelection)
 
   useFrame((_, delta) => {
     const controls = controlsRef.current
@@ -434,8 +439,27 @@ function CameraRig({
     const selectedPosition = positionsRef.current[selectedBodyId]
 
     if (followSelection && selectedPosition) {
-      if (!isUserInteractingRef.current) {
+      if (!isFocusInitialized.current) {
+        focusPosition.current.copy(selectedPosition)
         controls.target.copy(selectedPosition)
+        isFocusInitialized.current = true
+      }
+
+      const didBodyChange = lastSelectedBodyRef.current !== selectedBodyId
+      const didFollowToggleOn = !wasFollowingSelectionRef.current
+
+      if (didBodyChange || didFollowToggleOn) {
+        transitionEndTime.current = now + 1100
+        lastSelectedBodyRef.current = selectedBodyId
+      }
+
+      wasFollowingSelectionRef.current = true
+
+      const isTransitioning = now < transitionEndTime.current
+      easing.damp3(focusPosition.current, selectedPosition, isTransitioning ? 0.36 : 0.22, delta)
+
+      if (!isUserInteractingRef.current) {
+        easing.damp3(controls.target, focusPosition.current, isTransitioning ? 0.28 : 0.16, delta)
       }
 
       if (!cinematicCamera || !shouldAutoAnimate) {
@@ -453,11 +477,13 @@ function CameraRig({
         Math.sin(spin.current) * followDistance,
       )
 
-      desiredPosition.current.copy(selectedPosition).add(orbitOffset.current)
+      desiredPosition.current.copy(focusPosition.current).add(orbitOffset.current)
 
-      easing.damp3(camera.position, desiredPosition.current, 0.18, delta)
+      easing.damp3(camera.position, desiredPosition.current, isTransitioning ? 0.24 : 0.18, delta)
       return
     }
+
+    wasFollowingSelectionRef.current = false
 
     if (cinematicCamera && shouldAutoAnimate) {
       spin.current += delta * 0.04
