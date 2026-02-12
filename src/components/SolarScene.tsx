@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
 import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
-import { AdaptiveDpr, Html, Line, OrbitControls, Sparkles, Stars } from '@react-three/drei'
+import { AdaptiveDpr, Html, Line, OrbitControls, PerformanceMonitor, Sparkles, Stars } from '@react-three/drei'
 import { Bloom, ChromaticAberration, EffectComposer, Noise, Vignette } from '@react-three/postprocessing'
 import { easing } from 'maath'
 import { BlendFunction } from 'postprocessing'
@@ -455,6 +455,7 @@ function SceneContent({ settings, selectedBodyId, onSelectBody }: SolarSceneProp
   const controlsRef = useRef<OrbitControlsImpl | null>(null)
   const groupRefs = useRef<Partial<Record<BodyId, Group | null>>>({})
   const meshRefs = useRef<Partial<Record<BodyId, Mesh | null>>>({})
+  const [isReducedEffects, setIsReducedEffects] = useState(false)
   const elapsedSimulation = useRef(0)
   const smoothedSpeed = useRef(settings.speed)
   const isUserInteractingRef = useRef(false)
@@ -492,7 +493,7 @@ function SceneContent({ settings, selectedBodyId, onSelectBody }: SolarSceneProp
   }, [selectedBodyId, settings.followSelection, settings.cinematicCamera])
 
   useFrame((_, delta) => {
-    const frameDelta = Math.min(delta, 1 / 30)
+    const frameDelta = Math.min(delta, 0.1)
     const targetSpeed = settings.isPlaying ? settings.speed : 0
 
     smoothedSpeed.current = MathUtils.damp(smoothedSpeed.current, targetSpeed, 5.2, frameDelta)
@@ -513,14 +514,14 @@ function SceneContent({ settings, selectedBodyId, onSelectBody }: SolarSceneProp
       if (group) {
         group.position.set(position[0], position[1], position[2])
         const targetScale = selectedBodyId === body.id ? 1.09 : 1
-        const easedScale = MathUtils.lerp(group.scale.x, targetScale, 0.12)
+        const easedScale = MathUtils.damp(group.scale.x, targetScale, 8, frameDelta)
         group.scale.setScalar(easedScale)
       }
 
       if (mesh) {
         mesh.rotation.z = tiltByBody[body.id]
         const targetSpin = elapsedSimulation.current * body.rotationSpeed + spinPhaseByBody[body.id]
-        mesh.rotation.y = MathUtils.lerp(mesh.rotation.y, targetSpin, 0.18)
+        mesh.rotation.y = targetSpin
       }
 
       positionsRef.current[body.id].set(position[0], position[1], position[2])
@@ -532,7 +533,23 @@ function SceneContent({ settings, selectedBodyId, onSelectBody }: SolarSceneProp
       <color attach="background" args={['#020611']} />
       <fogExp2 attach="fog" args={['#040a17', 0.0055]} />
 
-      <AdaptiveDpr pixelated />
+      <AdaptiveDpr />
+      <PerformanceMonitor
+        factor={0.8}
+        onChange={({ factor }) => {
+          setIsReducedEffects((current) => {
+            if (factor < 0.45) {
+              return true
+            }
+
+            if (factor > 0.62) {
+              return false
+            }
+
+            return current
+          })
+        }}
+      />
 
       <ambientLight intensity={0.15} color="#88a3ff" />
       <hemisphereLight intensity={0.14} color="#8bb4ff" groundColor="#10131d" />
@@ -556,23 +573,25 @@ function SceneContent({ settings, selectedBodyId, onSelectBody }: SolarSceneProp
       <Stars
         radius={210}
         depth={90}
-        count={7500}
+        count={isReducedEffects ? 4600 : 7500}
         factor={4.6}
         saturation={0}
         fade
         speed={0.45}
       />
-      <Stars
-        radius={120}
-        depth={50}
-        count={1600}
-        factor={3.2}
-        saturation={0.5}
-        fade
-        speed={0.28}
-      />
+      {!isReducedEffects ? (
+        <Stars
+          radius={120}
+          depth={50}
+          count={1600}
+          factor={3.2}
+          saturation={0.5}
+          fade
+          speed={0.28}
+        />
+      ) : null}
       <Sparkles
-        count={250}
+        count={isReducedEffects ? 140 : 250}
         scale={150}
         size={4.4}
         speed={0.38}
@@ -607,9 +626,10 @@ function SceneContent({ settings, selectedBodyId, onSelectBody }: SolarSceneProp
       <OrbitControls
         ref={controlsRef}
         makeDefault
+        regress
         enableDamping
-        dampingFactor={0.12}
-        rotateSpeed={0.58}
+        dampingFactor={0.08}
+        rotateSpeed={0.92}
         zoomSpeed={0.75}
         minDistance={8}
         maxDistance={200}
@@ -642,15 +662,23 @@ function SceneContent({ settings, selectedBodyId, onSelectBody }: SolarSceneProp
       />
 
       <EffectComposer>
-        <Bloom intensity={1.18} luminanceThreshold={0.12} luminanceSmoothing={0.28} />
+        <Bloom intensity={1.1} luminanceThreshold={0.12} luminanceSmoothing={0.28} />
         <Vignette offset={0.2} darkness={0.68} eskil={false} />
-        <ChromaticAberration
-          blendFunction={BlendFunction.NORMAL}
-          offset={chromaticOffset}
-          radialModulation
-          modulationOffset={0.27}
-        />
-        <Noise premultiply blendFunction={BlendFunction.SOFT_LIGHT} opacity={0.08} />
+        {!isReducedEffects ? (
+          <ChromaticAberration
+            blendFunction={BlendFunction.NORMAL}
+            offset={chromaticOffset}
+            radialModulation
+            modulationOffset={0.27}
+          />
+        ) : (
+          <></>
+        )}
+        {!isReducedEffects ? (
+          <Noise premultiply blendFunction={BlendFunction.SOFT_LIGHT} opacity={0.08} />
+        ) : (
+          <></>
+        )}
       </EffectComposer>
     </>
   )
@@ -660,7 +688,8 @@ export function SolarScene(props: SolarSceneProps) {
   return (
     <Canvas
       className="solar-canvas"
-      dpr={[1, 1.75]}
+      dpr={[1, 1.45]}
+      performance={{ min: 0.68, max: 1, debounce: 300 }}
       gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
       camera={{ position: [0, 24, 86], fov: 46, near: 0.1, far: 520 }}
     >
