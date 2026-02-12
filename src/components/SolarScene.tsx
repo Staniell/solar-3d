@@ -25,6 +25,7 @@ import {
   computeBodyPositions,
   PLANETARY_ORBITS,
   SOLAR_BODIES,
+  type BodyPositions,
   type BodyId,
   type RingDefinition,
   type SolarBodyDefinition,
@@ -37,6 +38,7 @@ export interface SceneSettings {
   showLabels: boolean
   followSelection: boolean
   cinematicCamera: boolean
+  highQualityShadows: boolean
 }
 
 interface SolarSceneProps {
@@ -49,9 +51,32 @@ interface PlanetNodeProps {
   body: SolarBodyDefinition
   isSelected: boolean
   showLabel: boolean
+  shadowsEnabled: boolean
   onSelect: (id: BodyId) => void
   setGroupRef: (group: Group | null) => void
   setMeshRef: (mesh: Mesh | null) => void
+}
+
+const FIXED_SIMULATION_STEP = 1 / 120
+const MAX_FRAME_DELTA = 0.25
+
+function createVectorLookup(positions: BodyPositions) {
+  return (Object.entries(positions) as [BodyId, [number, number, number]][]).reduce<
+    Record<BodyId, Vector3>
+  >((lookup, [id, position]) => {
+    lookup[id] = new Vector3(position[0], position[1], position[2])
+    return lookup
+  }, {} as Record<BodyId, Vector3>)
+}
+
+function cloneVectorLookup(positions: Record<BodyId, Vector3>) {
+  return (Object.entries(positions) as [BodyId, Vector3][]).reduce<Record<BodyId, Vector3>>(
+    (lookup, [id, position]) => {
+      lookup[id] = position.clone()
+      return lookup
+    },
+    {} as Record<BodyId, Vector3>,
+  )
 }
 
 interface CameraRigProps {
@@ -149,6 +174,7 @@ function PlanetNode({
   body,
   isSelected,
   showLabel,
+  shadowsEnabled,
   onSelect,
   setGroupRef,
   setMeshRef,
@@ -183,8 +209,8 @@ function PlanetNode({
           setIsHovered(true)
         }}
         onPointerOut={() => setIsHovered(false)}
-        castShadow={body.kind !== 'star'}
-        receiveShadow={body.kind !== 'star'}
+        castShadow={shadowsEnabled && body.kind !== 'star'}
+        receiveShadow={shadowsEnabled && body.kind !== 'star'}
       >
         <sphereGeometry args={[body.radius, 64, 64]} />
         <meshStandardMaterial
@@ -308,13 +334,14 @@ function pseudoRandom(seed: number) {
 function AsteroidBelt({
   isPlaying,
   speed,
+  count,
 }: {
   isPlaying: boolean
   speed: number
+  count: number
 }) {
   const beltRef = useRef<Group | null>(null)
   const [positions, colors] = useMemo(() => {
-    const count = 2400
     const positionArray = new Float32Array(count * 3)
     const colorArray = new Float32Array(count * 3)
     const tint = new Color()
@@ -343,7 +370,7 @@ function AsteroidBelt({
     }
 
     return [positionArray, colorArray]
-  }, [])
+  }, [count])
 
   useFrame((_, delta) => {
     if (!beltRef.current || !isPlaying) {
@@ -385,7 +412,6 @@ function CameraRig({
 }: CameraRigProps) {
   const { camera } = useThree()
   const desiredPosition = useRef(new Vector3())
-  const desiredTarget = useRef(new Vector3())
   const orbitOffset = useRef(new Vector3())
   const origin = useRef(new Vector3(0, 0, 0))
   const spin = useRef(0)
@@ -409,8 +435,7 @@ function CameraRig({
 
     if (followSelection && selectedPosition) {
       if (!isUserInteractingRef.current) {
-        desiredTarget.current.copy(selectedPosition)
-        easing.damp3(controls.target, desiredTarget.current, 0.2, delta)
+        controls.target.copy(selectedPosition)
       }
 
       if (!cinematicCamera || !shouldAutoAnimate) {
@@ -446,7 +471,7 @@ function CameraRig({
       easing.damp3(camera.position, desiredPosition.current, 0.07, delta)
       easing.damp3(controls.target, origin.current, 0.09, delta)
     }
-  })
+  }, -2)
 
   return null
 }
@@ -456,12 +481,15 @@ function SceneContent({ settings, selectedBodyId, onSelectBody }: SolarSceneProp
   const groupRefs = useRef<Partial<Record<BodyId, Group | null>>>({})
   const meshRefs = useRef<Partial<Record<BodyId, Mesh | null>>>({})
   const [isReducedEffects, setIsReducedEffects] = useState(false)
-  const elapsedSimulation = useRef(0)
-  const smoothedSpeed = useRef(settings.speed)
+  const previousSimulationTime = useRef(0)
+  const currentSimulationTime = useRef(0)
+  const simulationAccumulator = useRef(0)
+  const smoothedFrameDelta = useRef(FIXED_SIMULATION_STEP)
   const isUserInteractingRef = useRef(false)
   const resumeAutoAtRef = useRef(0)
   const manualCameraOverrideRef = useRef(false)
   const chromaticOffset = useMemo(() => new Vector2(0.0009, 0.0011), [])
+  const interpolatedPosition = useMemo(() => new Vector3(), [])
   const tiltByBody = useMemo(() => {
     return SOLAR_BODIES.reduce<Record<BodyId, number>>((lookup, body) => {
       lookup[body.id] = MathUtils.degToRad(body.axialTilt)
@@ -475,65 +503,90 @@ function SceneContent({ settings, selectedBodyId, onSelectBody }: SolarSceneProp
     }, {} as Record<BodyId, number>)
   }, [])
 
-  const initialPositions = useMemo(() => {
-    const zeroTimePositions = computeBodyPositions(0)
+  const initialPositions = useMemo(() => createVectorLookup(computeBodyPositions(0)), [])
 
-    return (Object.entries(zeroTimePositions) as [BodyId, [number, number, number]][]).reduce<
-      Record<BodyId, Vector3>
-    >((lookup, [id, position]) => {
-      lookup[id] = new Vector3(position[0], position[1], position[2])
-      return lookup
-    }, {} as Record<BodyId, Vector3>)
-  }, [])
-
-  const positionsRef = useRef<Record<BodyId, Vector3>>(initialPositions)
+  const previousPositionsRef = useRef<Record<BodyId, Vector3>>(cloneVectorLookup(initialPositions))
+  const currentPositionsRef = useRef<Record<BodyId, Vector3>>(cloneVectorLookup(initialPositions))
+  const positionsRef = useRef<Record<BodyId, Vector3>>(cloneVectorLookup(initialPositions))
+  const shouldReduceVisuals =
+    isReducedEffects || !settings.highQualityShadows || (settings.isPlaying && settings.speed > 1.6)
+  const asteroidCount = shouldReduceVisuals ? 900 : 1800
 
   useEffect(() => {
     manualCameraOverrideRef.current = false
   }, [selectedBodyId, settings.followSelection, settings.cinematicCamera])
 
   useFrame((_, delta) => {
-    const frameDelta = Math.min(delta, 0.1)
-    const targetSpeed = settings.isPlaying ? settings.speed : 0
+    const rawFrameDelta = Math.min(delta, MAX_FRAME_DELTA)
+    smoothedFrameDelta.current = MathUtils.damp(smoothedFrameDelta.current, rawFrameDelta, 16, rawFrameDelta)
+    const frameDelta = Math.min(smoothedFrameDelta.current, 1 / 45)
+    const renderDelta = Math.min(delta, 0.1)
+    const simulationSpeed = settings.isPlaying ? settings.speed : 0
 
-    smoothedSpeed.current = MathUtils.damp(smoothedSpeed.current, targetSpeed, 5.2, frameDelta)
+    if (simulationSpeed === 0) {
+      simulationAccumulator.current = 0
+    } else {
+      simulationAccumulator.current += frameDelta
 
-    if (Math.abs(smoothedSpeed.current) < 0.0005) {
-      smoothedSpeed.current = 0
+      while (simulationAccumulator.current >= FIXED_SIMULATION_STEP) {
+        previousSimulationTime.current = currentSimulationTime.current
+        currentSimulationTime.current += FIXED_SIMULATION_STEP * simulationSpeed
+
+        const worldPositions = computeBodyPositions(currentSimulationTime.current)
+
+        for (const body of SOLAR_BODIES) {
+          const id = body.id
+          const nextPosition = worldPositions[id]
+
+          previousPositionsRef.current[id].copy(currentPositionsRef.current[id])
+          currentPositionsRef.current[id].set(nextPosition[0], nextPosition[1], nextPosition[2])
+        }
+
+        simulationAccumulator.current -= FIXED_SIMULATION_STEP
+      }
     }
 
-    elapsedSimulation.current += frameDelta * smoothedSpeed.current
-
-    const worldPositions = computeBodyPositions(elapsedSimulation.current)
+    const interpolationAlpha =
+      simulationSpeed === 0 ? 1 : simulationAccumulator.current / FIXED_SIMULATION_STEP
+    const renderSimulationTime = MathUtils.lerp(
+      previousSimulationTime.current,
+      currentSimulationTime.current,
+      interpolationAlpha,
+    )
 
     for (const body of SOLAR_BODIES) {
-      const position = worldPositions[body.id]
       const group = groupRefs.current[body.id]
       const mesh = meshRefs.current[body.id]
 
+      interpolatedPosition.lerpVectors(
+        previousPositionsRef.current[body.id],
+        currentPositionsRef.current[body.id],
+        interpolationAlpha,
+      )
+
       if (group) {
-        group.position.set(position[0], position[1], position[2])
+        group.position.copy(interpolatedPosition)
         const targetScale = selectedBodyId === body.id ? 1.09 : 1
-        const easedScale = MathUtils.damp(group.scale.x, targetScale, 8, frameDelta)
+        const easedScale = MathUtils.damp(group.scale.x, targetScale, 8, renderDelta)
         group.scale.setScalar(easedScale)
       }
 
       if (mesh) {
         mesh.rotation.z = tiltByBody[body.id]
-        const targetSpin = elapsedSimulation.current * body.rotationSpeed + spinPhaseByBody[body.id]
+        const targetSpin = renderSimulationTime * body.rotationSpeed + spinPhaseByBody[body.id]
         mesh.rotation.y = targetSpin
       }
 
-      positionsRef.current[body.id].set(position[0], position[1], position[2])
+      positionsRef.current[body.id].copy(interpolatedPosition)
     }
-  })
+  }, -3)
 
   return (
     <>
       <color attach="background" args={['#020611']} />
       <fogExp2 attach="fog" args={['#040a17', 0.0055]} />
 
-      <AdaptiveDpr />
+      <AdaptiveDpr pixelated />
       <PerformanceMonitor
         factor={0.8}
         onChange={({ factor }) => {
@@ -559,7 +612,7 @@ function SceneContent({ settings, selectedBodyId, onSelectBody }: SolarSceneProp
         decay={2}
         distance={260}
         color="#ffd2a8"
-        castShadow
+        castShadow={settings.highQualityShadows}
       />
       <pointLight
         position={[0, 22, 0]}
@@ -573,13 +626,13 @@ function SceneContent({ settings, selectedBodyId, onSelectBody }: SolarSceneProp
       <Stars
         radius={210}
         depth={90}
-        count={isReducedEffects ? 4600 : 7500}
+        count={shouldReduceVisuals ? 2200 : 6200}
         factor={4.6}
         saturation={0}
         fade
         speed={0.45}
       />
-      {!isReducedEffects ? (
+      {!shouldReduceVisuals ? (
         <Stars
           radius={120}
           depth={50}
@@ -591,7 +644,7 @@ function SceneContent({ settings, selectedBodyId, onSelectBody }: SolarSceneProp
         />
       ) : null}
       <Sparkles
-        count={isReducedEffects ? 140 : 250}
+        count={shouldReduceVisuals ? 70 : 220}
         scale={150}
         size={4.4}
         speed={0.38}
@@ -605,7 +658,7 @@ function SceneContent({ settings, selectedBodyId, onSelectBody }: SolarSceneProp
           ))
         : null}
 
-      <AsteroidBelt isPlaying={settings.isPlaying} speed={settings.speed} />
+      <AsteroidBelt isPlaying={settings.isPlaying} speed={settings.speed} count={asteroidCount} />
 
       {SOLAR_BODIES.map((body) => (
         <PlanetNode
@@ -613,6 +666,7 @@ function SceneContent({ settings, selectedBodyId, onSelectBody }: SolarSceneProp
           body={body}
           isSelected={selectedBodyId === body.id}
           showLabel={settings.showLabels}
+          shadowsEnabled={settings.highQualityShadows}
           onSelect={onSelectBody}
           setGroupRef={(group) => {
             groupRefs.current[body.id] = group
@@ -661,25 +715,19 @@ function SceneContent({ settings, selectedBodyId, onSelectBody }: SolarSceneProp
         manualCameraOverrideRef={manualCameraOverrideRef}
       />
 
-      <EffectComposer>
-        <Bloom intensity={1.1} luminanceThreshold={0.12} luminanceSmoothing={0.28} />
-        <Vignette offset={0.2} darkness={0.68} eskil={false} />
-        {!isReducedEffects ? (
+      {!shouldReduceVisuals ? (
+        <EffectComposer>
+          <Bloom intensity={1.1} luminanceThreshold={0.12} luminanceSmoothing={0.28} />
+          <Vignette offset={0.2} darkness={0.68} eskil={false} />
           <ChromaticAberration
             blendFunction={BlendFunction.NORMAL}
             offset={chromaticOffset}
             radialModulation
             modulationOffset={0.27}
           />
-        ) : (
-          <></>
-        )}
-        {!isReducedEffects ? (
           <Noise premultiply blendFunction={BlendFunction.SOFT_LIGHT} opacity={0.08} />
-        ) : (
-          <></>
-        )}
-      </EffectComposer>
+        </EffectComposer>
+      ) : null}
     </>
   )
 }
@@ -688,9 +736,10 @@ export function SolarScene(props: SolarSceneProps) {
   return (
     <Canvas
       className="solar-canvas"
-      dpr={[1, 1.45]}
-      performance={{ min: 0.68, max: 1, debounce: 300 }}
-      gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
+      dpr={[0.75, 1.1]}
+      performance={{ min: 0.5, max: 1, debounce: 260 }}
+      shadows={props.settings.highQualityShadows}
+      gl={{ antialias: false, alpha: true, powerPreference: 'high-performance' }}
       camera={{ position: [0, 24, 86], fov: 46, near: 0.1, far: 520 }}
     >
       <SceneContent {...props} />

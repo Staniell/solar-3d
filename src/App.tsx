@@ -10,6 +10,7 @@ const INITIAL_SETTINGS: SceneSettings = {
   showLabels: true,
   followSelection: true,
   cinematicCamera: true,
+  highQualityShadows: false,
 }
 
 function App() {
@@ -147,18 +148,30 @@ function App() {
                 >
                   Labels
                 </button>
+                <button
+                  type="button"
+                  className={`surface-button${settings.highQualityShadows ? ' active' : ''}`}
+                  onClick={() =>
+                    setSettings((current) => ({
+                      ...current,
+                      highQualityShadows: !current.highQualityShadows,
+                    }))
+                  }
+                >
+                  Shadows
+                </button>
               </div>
 
               <label className="speed-label" htmlFor="simulation-speed">
                 <span>Time Warp</span>
-                <strong>{settings.speed.toFixed(1)}x</strong>
+                <strong>{settings.speed.toFixed(2)}x</strong>
               </label>
               <input
                 id="simulation-speed"
                 type="range"
                 min={0.2}
                 max={4.2}
-                step={0.1}
+                step={0.01}
                 value={settings.speed}
                 onChange={(event) => {
                   const nextSpeed = Number(event.target.value)
