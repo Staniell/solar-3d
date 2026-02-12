@@ -272,23 +272,25 @@ function DeepSpaceBackdrop() {
         <sphereGeometry args={[1, 64, 64]} />
         <meshBasicMaterial color="#01030a" side={BackSide} />
       </mesh>
-      <mesh position={[-55, 14, -95]} rotation={[0.2, 0.38, 0]}>
-        <planeGeometry args={[180, 90]} />
+
+      <mesh position={[-64, 18, -118]} rotation={[0.18, 0.42, 0]} scale={[1.7, 0.8, 1.25]}>
+        <sphereGeometry args={[30, 40, 40]} />
         <meshBasicMaterial
           color="#2f558f"
           transparent
-          opacity={0.16}
+          opacity={0.1}
           blending={AdditiveBlending}
           depthWrite={false}
           toneMapped={false}
         />
       </mesh>
-      <mesh position={[52, -8, -88]} rotation={[-0.12, -0.42, 0]}>
-        <planeGeometry args={[150, 80]} />
+
+      <mesh position={[66, -6, -112]} rotation={[-0.14, -0.36, 0]} scale={[1.55, 0.75, 1.2]}>
+        <sphereGeometry args={[28, 40, 40]} />
         <meshBasicMaterial
           color="#a94d22"
           transparent
-          opacity={0.12}
+          opacity={0.085}
           blending={AdditiveBlending}
           depthWrite={false}
           toneMapped={false}

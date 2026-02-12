@@ -23,6 +23,33 @@
   pointer-events: none;
 }
 
+.hud-toggle {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  z-index: 40;
+  pointer-events: auto;
+  border: 1px solid rgba(187, 211, 243, 0.3);
+  border-radius: 999px;
+  background: rgba(12, 22, 39, 0.78);
+  color: #e1eeff;
+  font-size: 0.78rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 0.52rem 0.92rem;
+  cursor: pointer;
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease,
+    background-color 180ms ease;
+}
+
+.hud-toggle:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 220, 176, 0.84);
+  background: rgba(22, 32, 54, 0.88);
+}
+
 .hud-panel {
   position: absolute;
   pointer-events: auto;
@@ -70,7 +97,7 @@
 }
 
 .hud-info {
-  top: 1rem;
+  top: 4.1rem;
   right: 1rem;
   width: min(22rem, calc(100% - 2rem));
   padding: 1rem 1.1rem;
@@ -272,6 +299,11 @@ input[type='range']::-moz-range-thumb {
 }
 
 @media (max-width: 960px) {
+  .hud-toggle {
+    top: 0.75rem;
+    right: 0.75rem;
+  }
+
   .hud-top,
   .hud-info,
   .hud-selector,
