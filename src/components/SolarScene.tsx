@@ -60,6 +60,9 @@ interface CameraRigProps {
   followSelection: boolean
   cinematicCamera: boolean
   positionsRef: MutableRefObject<Record<BodyId, Vector3>>
+  isUserInteractingRef: MutableRefObject<boolean>
+  resumeAutoAtRef: MutableRefObject<number>
+  manualCameraOverrideRef: MutableRefObject<boolean>
 }
 
 function useSafeTexture(url: string, repeat = false) {
@@ -374,6 +377,9 @@ function CameraRig({
   followSelection,
   cinematicCamera,
   positionsRef,
+  isUserInteractingRef,
+  resumeAutoAtRef,
+  manualCameraOverrideRef,
 }: CameraRigProps) {
   const { camera } = useThree()
   const desiredPosition = useRef(new Vector3())
@@ -390,39 +396,43 @@ function CameraRig({
       return
     }
 
+    const now = performance.now()
+    const shouldAutoAnimate =
+      !manualCameraOverrideRef.current &&
+      !isUserInteractingRef.current &&
+      now >= resumeAutoAtRef.current
+
     const selectedBody = BODY_MAP[selectedBodyId]
     const selectedPosition = positionsRef.current[selectedBodyId]
 
     if (followSelection && selectedPosition) {
-      const followDistance = Math.max(8, selectedBody.radius * 8 + 6)
-
-      if (cinematicCamera) {
-        spin.current += delta * 0.16
-        sway.current += delta * 0.85
-
-        orbitOffset.current.set(
-          Math.cos(spin.current) * followDistance,
-          followDistance * 0.38 + Math.sin(sway.current) * 1.1,
-          Math.sin(spin.current) * followDistance,
-        )
-      } else {
-        orbitOffset.current.set(
-          followDistance * 0.9,
-          followDistance * 0.45,
-          followDistance * 0.9,
-        )
+      if (!isUserInteractingRef.current) {
+        desiredTarget.current.copy(selectedPosition)
+        easing.damp3(controls.target, desiredTarget.current, 0.2, delta)
       }
 
-      desiredTarget.current.copy(selectedPosition)
+      if (!cinematicCamera || !shouldAutoAnimate) {
+        return
+      }
+
+      const followDistance = Math.max(8, selectedBody.radius * 8 + 6)
+
+      spin.current += delta * 0.16
+      sway.current += delta * 0.85
+
+      orbitOffset.current.set(
+        Math.cos(spin.current) * followDistance,
+        followDistance * 0.38 + Math.sin(sway.current) * 1.1,
+        Math.sin(spin.current) * followDistance,
+      )
+
       desiredPosition.current.copy(selectedPosition).add(orbitOffset.current)
 
       easing.damp3(camera.position, desiredPosition.current, 0.18, delta)
-      easing.damp3(controls.target, desiredTarget.current, 0.2, delta)
-      controls.update()
       return
     }
 
-    if (cinematicCamera) {
+    if (cinematicCamera && shouldAutoAnimate) {
       spin.current += delta * 0.04
 
       desiredPosition.current.set(
@@ -433,7 +443,6 @@ function CameraRig({
 
       easing.damp3(camera.position, desiredPosition.current, 0.07, delta)
       easing.damp3(controls.target, origin.current, 0.09, delta)
-      controls.update()
     }
   })
 
@@ -446,6 +455,9 @@ function SceneContent({ settings, selectedBodyId, onSelectBody }: SolarSceneProp
   const meshRefs = useRef<Partial<Record<BodyId, Mesh | null>>>({})
   const elapsedSimulation = useRef(0)
   const smoothedSpeed = useRef(settings.speed)
+  const isUserInteractingRef = useRef(false)
+  const resumeAutoAtRef = useRef(0)
+  const manualCameraOverrideRef = useRef(false)
   const chromaticOffset = useMemo(() => new Vector2(0.0009, 0.0011), [])
   const tiltByBody = useMemo(() => {
     return SOLAR_BODIES.reduce<Record<BodyId, number>>((lookup, body) => {
@@ -472,6 +484,10 @@ function SceneContent({ settings, selectedBodyId, onSelectBody }: SolarSceneProp
   }, [])
 
   const positionsRef = useRef<Record<BodyId, Vector3>>(initialPositions)
+
+  useEffect(() => {
+    manualCameraOverrideRef.current = false
+  }, [selectedBodyId, settings.followSelection, settings.cinematicCamera])
 
   useFrame((_, delta) => {
     const frameDelta = Math.min(delta, 1 / 30)
@@ -596,6 +612,20 @@ function SceneContent({ settings, selectedBodyId, onSelectBody }: SolarSceneProp
         minDistance={8}
         maxDistance={200}
         enablePan={false}
+        onStart={() => {
+          isUserInteractingRef.current = true
+          manualCameraOverrideRef.current = true
+          resumeAutoAtRef.current = performance.now() + 900
+        }}
+        onChange={() => {
+          if (isUserInteractingRef.current) {
+            resumeAutoAtRef.current = performance.now() + 900
+          }
+        }}
+        onEnd={() => {
+          isUserInteractingRef.current = false
+          resumeAutoAtRef.current = performance.now() + 1200
+        }}
       />
 
       <CameraRig
@@ -604,6 +634,9 @@ function SceneContent({ settings, selectedBodyId, onSelectBody }: SolarSceneProp
         followSelection={settings.followSelection}
         cinematicCamera={settings.cinematicCamera}
         positionsRef={positionsRef}
+        isUserInteractingRef={isUserInteractingRef}
+        resumeAutoAtRef={resumeAutoAtRef}
+        manualCameraOverrideRef={manualCameraOverrideRef}
       />
 
       <EffectComposer>
