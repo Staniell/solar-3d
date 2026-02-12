@@ -9,6 +9,7 @@ export type BodyId =
   | 'saturn'
   | 'uranus'
   | 'neptune'
+  | 'pluto'
 
 export type BodyKind = 'star' | 'planet' | 'moon'
 
@@ -272,6 +273,27 @@ export const SOLAR_BODIES: SolarBodyDefinition[] = [
       'Radiates more heat than it receives.',
     ],
   },
+  {
+    id: 'pluto',
+    name: 'Pluto',
+    kind: 'planet',
+    radius: 0.42,
+    distance: 67,
+    orbitSpeed: 0.14,
+    rotationSpeed: -0.05,
+    axialTilt: 122.5,
+    orbitOffset: 2.8,
+    surfaceColor: '#b99379',
+    orbitColor: '#5b6f8a',
+    textureUrl: `${TEXTURE_ROOT}/pluto.jpg`,
+    description:
+      'A distant icy dwarf world with a muted bronze tint near the outer system edge.',
+    facts: [
+      'Classified as a dwarf planet in 2006.',
+      'Its largest moon Charon forms a binary-like pair.',
+      'A year on Pluto lasts about 248 Earth years.',
+    ],
+  },
 ]
 
 export const BODY_MAP = SOLAR_BODIES.reduce<Record<BodyId, SolarBodyDefinition>>(
@@ -293,6 +315,7 @@ export const PRIMARY_BODY_ORDER: BodyId[] = [
   'saturn',
   'uranus',
   'neptune',
+  'pluto',
 ]
 
 export const PLANETARY_ORBITS = SOLAR_BODIES.filter(
